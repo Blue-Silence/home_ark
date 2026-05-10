@@ -10,6 +10,7 @@ import shlex
 import shutil
 import socket
 import subprocess
+from time import monotonic
 
 from .config import Config
 from .names import encode_name
@@ -30,27 +31,36 @@ def run_archive(config: Config, archive_dir: Path | None = None, allow_non_root:
         directory.mkdir(parents=True, exist_ok=False)
 
     entries = top_level_entries(config)
+    included_entries = [entry for entry in entries if entry["included"]]
+    excluded_count = len(entries) - len(included_entries)
     rows: list[list[str]] = []
     failures: list[str] = []
+    started_at = monotonic()
+
+    print(f"Archive: {archive_root} ({len(included_entries)} dirs, {excluded_count} excluded)", flush=True)
 
     with (manifest_dir / "archive-run.log").open("w", encoding="utf-8") as log:
         log.write(f"created_at={created_at}\narchive_dir={archive_root}\nsource_root={config.source_root}\n")
         _write_manifests(archive_root, entries, config, created_at)
 
-        for entry in entries:
-            if not entry["included"]:
-                continue
+        for index, entry in enumerate(included_entries, start=1):
             name = str(entry["name"])
             escaped = encode_name(name)
             archive_rel = f"DATA/{escaped}.tar.zst"
             archive_file = archive_root / archive_rel
             log.write(f"\n[archive {name!r}]\n")
 
+            prefix = f"[{index}/{len(included_entries)}]"
+            step_started_at = monotonic()
             if not _tar_to_zstd(config.source_root, name, archive_file, config.zstd_level, log):
+                _print_progress(prefix, name, "archive FAILED", "-", monotonic() - step_started_at)
                 failures.append(name)
                 continue
+            archive_size = archive_file.stat().st_size
+            _print_progress(prefix, name, "tar.zst", _format_bytes(archive_size), monotonic() - step_started_at)
 
             par2_rel = f"PAR2/{escaped}.tar.zst.par2"
+            step_started_at = monotonic()
             par2 = _run(
                 [
                     "par2",
@@ -65,15 +75,18 @@ def run_archive(config: Config, archive_dir: Path | None = None, allow_non_root:
             )
             _log_result(log, par2)
             if par2.returncode != 0:
+                _print_progress(prefix, name, "par2 FAILED", _format_bytes(archive_size), monotonic() - step_started_at)
                 failures.append(name)
                 continue
+            par2_size = _par2_set_size(par2_dir, escaped)
+            _print_progress(prefix, name, "par2", _format_bytes(par2_size), monotonic() - step_started_at)
 
             rows.append(
                 [
                     escaped,
                     encode_name(str(entry["path"])),
                     archive_rel,
-                    str(archive_file.stat().st_size),
+                    str(archive_size),
                     str(config.parity_percent),
                     _now(),
                 ]
@@ -85,14 +98,18 @@ def run_archive(config: Config, archive_dir: Path | None = None, allow_non_root:
             log.write("\nFAILURES\n" + "\n".join(failures) + "\n")
         log.write("\narchive-run.log closed before SHA256SUMS generation\n")
 
+    step_started_at = monotonic()
     sha = _write_sha256sums(archive_root)
     if sha.returncode != 0:
+        _print_progress(f"[{len(included_entries)}/{len(included_entries)}]", "SHA256SUMS", "FAILED", "-", monotonic() - step_started_at)
         failures.append("SHA256SUMS")
+    else:
+        _print_progress(f"[{len(included_entries)}/{len(included_entries)}]", "SHA256SUMS", "ok", "-", monotonic() - step_started_at)
 
     if failures:
-        print(f"Archive completed with failures: {archive_root}")
+        print(f"Archive completed with failures: {archive_root} total {_format_elapsed(monotonic() - started_at)}")
         return 1
-    print(f"Archive created: {archive_root}")
+    print(f"Archive created: {archive_root} total {_format_elapsed(monotonic() - started_at)}")
     print("Next: run verify, then copy the archive set to a second physical medium.")
     return 0
 
@@ -222,6 +239,32 @@ def _write_sha256sums(archive_root: Path) -> subprocess.CompletedProcess[str]:
 def _write_tool_versions(path: Path) -> None:
     commands = [["tar", "--version"], ["zstd", "--version"], ["par2", "-V"], ["sha256sum", "--version"], ["python3", "--version"]]
     path.write_text("\n".join(_format_command_output(command) for command in commands), encoding="utf-8")
+
+
+def _format_bytes(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if value < 1024 or unit == "TiB":
+            if unit == "B":
+                return f"{size} B"
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{size} B"
+
+
+def _format_elapsed(seconds: float) -> str:
+    total_seconds = max(0, int(round(seconds)))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _par2_set_size(par2_dir: Path, escaped_name: str) -> int:
+    return sum(path.stat().st_size for path in par2_dir.glob(f"{escaped_name}.tar.zst*.par2"))
+
+
+def _print_progress(progress: str, name: str, stage: str, size: str, elapsed: float) -> None:
+    print(f"{progress} {name!r} {stage} {size} {_format_elapsed(elapsed)}", flush=True)
 
 
 def _write_command_output(path: Path, args: list[str]) -> None:

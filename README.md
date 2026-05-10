@@ -62,6 +62,9 @@ Create the archive set:
 sudo python3 homeark.py archive --config homeark.conf
 ```
 
+The archive command prints compact progress lines with count, item, stage, size,
+and elapsed time. Detailed command output is written to `MANIFEST/archive-run.log`.
+
 Verify the archive set:
 
 ```bash
