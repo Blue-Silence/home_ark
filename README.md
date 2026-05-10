@@ -147,10 +147,13 @@ Important files:
 
 ## Tests
 
-Run the unit tests:
+Run the test suite:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
 ```
+
+The suite includes a small PAR2 repair integration test. It is skipped if
+`tar`, `zstd`, `par2`, or `sha256sum` is not available.
 
 The broader design notes live in `homeark_cold_archive_plan.md`.
