@@ -874,6 +874,7 @@ homeark.py restore   # 恢复指定归档
 - 对全部 PAR2 集执行 `par2 verify`；
 - 全量执行 `zstd -t`；
 - 抽样或按配置全量执行 tar 列表试读；
+- 检查当前归档集结构一致性，例如 `DATA/*.tar.zst` 必须与 `archive-index.tsv` 对应；
 - 输出总结报告。
 
 ### 15.3 `homeark.py restore`

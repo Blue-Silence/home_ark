@@ -53,6 +53,7 @@ def run_archive(config: Config, archive_dir: Path | None = None, allow_non_root:
             prefix = f"[{index}/{len(included_entries)}]"
             step_started_at = monotonic()
             if not _tar_to_zstd(config.source_root, name, archive_file, config.zstd_level, log):
+                _remove_partial_archive(archive_file, log)
                 _print_progress(prefix, name, "archive FAILED", "-", monotonic() - step_started_at)
                 failures.append(name)
                 continue
@@ -261,6 +262,17 @@ def _format_elapsed(seconds: float) -> str:
 
 def _par2_set_size(par2_dir: Path, escaped_name: str) -> int:
     return sum(path.stat().st_size for path in par2_dir.glob(f"{escaped_name}.tar.zst*.par2"))
+
+
+def _remove_partial_archive(archive_file: Path, log) -> None:
+    try:
+        archive_file.unlink()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        log.write(f"could not remove partial archive {archive_file}: {exc}\n")
+    else:
+        log.write(f"removed partial archive {archive_file}\n")
 
 
 def _print_progress(progress: str, name: str, stage: str, size: str, elapsed: float) -> None:

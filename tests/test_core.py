@@ -9,6 +9,7 @@ from homeark.names import decode_name, encode_name
 from homeark.repair import repair_targets
 from homeark.restore import ensure_restore_target_is_safe, find_archive_row, restore_targets
 from homeark.scan import archive_dir_is_safe, top_level_entries
+from homeark.verify import _snapshot_consistency_failures
 
 
 class HomeArkCoreTests(unittest.TestCase):
@@ -103,6 +104,44 @@ class HomeArkCoreTests(unittest.TestCase):
             self.assertEqual(repair_targets(archive, "my project")[0]["archive_file"], "DATA/my%20project.tar.zst")
             self.assertEqual(repair_targets(archive, "data%25old", escaped_name=True)[0]["archive_file"], "DATA/data%25old.tar.zst")
             self.assertEqual(len(repair_targets(archive, None, all_archives=True)), 2)
+
+    def test_verify_detects_unindexed_data_archives(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "archive"
+            manifest = archive / "MANIFEST"
+            data = archive / "DATA"
+            manifest.mkdir(parents=True)
+            data.mkdir()
+            rows = [
+                {
+                    "dir_name_escaped": "alice",
+                    "archive_file": "DATA/alice.tar.zst",
+                }
+            ]
+            (data / "alice.tar.zst").write_text("ok", encoding="utf-8")
+            (data / "partial.tar.zst").write_text("partial", encoding="utf-8")
+
+            self.assertEqual(
+                _snapshot_consistency_failures(archive, rows),
+                ["unindexed data archive: DATA/partial.tar.zst"],
+            )
+
+    def test_verify_detects_missing_indexed_archives(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "archive"
+            data = archive / "DATA"
+            data.mkdir(parents=True)
+            rows = [
+                {
+                    "dir_name_escaped": "alice",
+                    "archive_file": "DATA/alice.tar.zst",
+                }
+            ]
+
+            self.assertEqual(
+                _snapshot_consistency_failures(archive, rows),
+                ["indexed archive missing: DATA/alice.tar.zst"],
+            )
 
 
 if __name__ == "__main__":

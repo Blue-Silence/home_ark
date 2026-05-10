@@ -18,6 +18,9 @@ def run_verify(archive_dir: Path, config: Config) -> int:
     if not rows:
         failures.append("archive-index")
         print("No archive-index rows found.")
+    for failure in _snapshot_consistency_failures(archive_root, rows):
+        failures.append(f"snapshot:{failure}")
+        print(f"Snapshot inconsistency: {failure}")
 
     for row in rows:
         archive_file = archive_root / row["archive_file"]
@@ -48,6 +51,30 @@ def _read_index(archive_root: Path) -> list[dict[str, str]]:
         return []
     header = lines[0].split("\t")
     return [dict(zip(header, line.split("\t"), strict=False)) for line in lines[1:] if line]
+
+
+def _snapshot_consistency_failures(archive_root: Path, rows: list[dict[str, str]]) -> list[str]:
+    failures: list[str] = []
+    indexed: set[str] = set()
+
+    for row in rows:
+        archive_file = row.get("archive_file", "")
+        if not archive_file:
+            failures.append("archive-index row missing archive_file")
+            continue
+        if archive_file in indexed:
+            failures.append(f"duplicate archive-index entry: {archive_file}")
+        indexed.add(archive_file)
+        if not archive_file.startswith("DATA/"):
+            failures.append(f"indexed archive outside DATA: {archive_file}")
+        if not (archive_root / archive_file).is_file():
+            failures.append(f"indexed archive missing: {archive_file}")
+
+    data_dir = archive_root / "DATA"
+    actual = {path.relative_to(archive_root).as_posix() for path in data_dir.glob("*.tar.zst") if path.is_file()}
+    for archive_file in sorted(actual - indexed):
+        failures.append(f"unindexed data archive: {archive_file}")
+    return failures
 
 
 def _run_and_print(args: list[str], cwd: Path | None, title: str) -> bool:

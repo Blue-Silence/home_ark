@@ -140,7 +140,7 @@ Important files:
 ## Safety Notes
 
 - HomeArk does not provide snapshot consistency. The operator must ensure the source tree is quiet enough during archiving.
-- `verify` is read-only. `repair` may modify damaged `DATA/*.tar.zst` files.
+- `verify` is read-only and checks the current archive set structure. `repair` may modify damaged `DATA/*.tar.zst` files.
 - Restore refuses to write into a non-empty target directory.
 - Keep at least two physical copies of the completed archive set. PAR2 is not a substitute for a second copy.
 - Windows can store, copy, and sometimes inspect the archive files, but full Linux metadata restore should be done on Linux.
