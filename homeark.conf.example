@@ -1,0 +1,18 @@
+# HomeArk example configuration.
+#
+# Copy this file to homeark.conf and adjust SOURCE_ROOT / OUTPUT_ROOT.
+# OUTPUT_ROOT must be outside SOURCE_ROOT.
+
+SOURCE_ROOT="/home/usera"
+OUTPUT_ROOT="/mnt/archive"
+PARITY_PERCENT="20"
+PAR2_BLOCK_SIZE="auto"
+PAR2_VOLUME_LAYOUT="auto"
+ZSTD_LEVEL="10"
+INCLUDE_TOP_LEVEL_HIDDEN="false"
+FOLLOW_TOP_LEVEL_SYMLINKS="false"
+ENABLE_SOURCE_FILE_HASHES="false"
+ARCHIVE_NAME_ENCODING="percent-utf8"
+ERROR_POLICY="strict"
+FULL_TAR_LIST_TEST="false"
+EXCLUDE_TOP_LEVEL_NAMES=""
